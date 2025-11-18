@@ -1,21 +1,19 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
-# This import works because Uvicorn runs from the root 'MediBot' directory
-# It correctly imports the 'model' instance from your updated app/model.py file
+# Import the model instance from app/model.py
 from app.model import model
 
-# Initialize the FastAPI app
+# Initialize FastAPI app
 app = FastAPI(
     title="MediBot API",
     description="An API to predict diseases based on symptoms.",
     version="1.0.0"
 )
 
-# --- MIDDLEWARE ---
-# This allows your React frontend (running on a different port) to communicate
+# Enable CORS (Allows React Frontend to talk to this Backend)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -24,27 +22,42 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- API DATA MODELS (UPDATED FOR REACT) ---
-# Defines the input structure from the frontend
+# Input Structure
 class SymptomsInput(BaseModel):
     symptoms: List[str]
 
-# Defines the output structure that the frontend expects
+# Output Structure
 class PredictionResponse(BaseModel):
     predictions: List[Dict[str, Any]]
+    error: Optional[str] = None
 
-# --- API ENDPOINTS (UPDATED FOR REACT) ---
 @app.get("/")
 def read_root():
-    return {"status": "ok", "message": "Welcome to the MediBot API!"}
+    return {"status": "ok", "message": "MediBot API is running."}
 
 @app.post("/predict", response_model=PredictionResponse)
 def predict_disease(symptom_data: SymptomsInput):
     """
-    UPDATED: Receives a list of symptoms and returns a list of prediction objects
-    with disease names and confidence scores, matching the React frontend's needs.
+    Receives symptoms, processes them, and returns predictions.
+    Ensures frontend never crashes by always returning a list for 'predictions'.
     """
     
-    prediction_list = model.predict(symptom_data.symptoms)
-    # The key here is returning a dictionary with the "predictions" key
-    return {"predictions": prediction_list}
+    # Get result from model
+    result = model.predict(symptom_data.symptoms)
+
+    # Check if the model returned an error dictionary
+    if isinstance(result, dict) and "error" in result:
+        # ERROR CASE: 
+        # Return empty predictions list so React .map() doesn't break.
+        # Pass the error message so React can display a warning if you want.
+        return {
+            "predictions": [], 
+            "error": result["message"]
+        }
+
+    #  SUCCESS CASE:
+    # Return the predictions list.
+    return {
+        "predictions": result,
+        "error": None
+    }
